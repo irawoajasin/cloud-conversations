@@ -48,8 +48,8 @@ function setup() {
 function draw() {
   background(217, 238, 244);
   textSize(14);
-  text('cloud conversations at the sabey data center', windowWidth - 225, 25);
-  text(hour() + ":" + minute(), windowWidth - 55, 50);
+  text('cloud conversations at the sabey data center', windowWidth - 275, 25);
+  text(hour() + ":" + minute(), windowWidth - 105, 50);
 
   // info text specs
   textAlign(LEFT, TOP);
