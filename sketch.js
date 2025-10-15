@@ -48,8 +48,7 @@ function setup() {
 function draw() {
   background(217, 238, 244);
   textSize(14);
-  text('cloud conversations at the sabey data center', windowWidth - 225, 25);
-  text(hour() + ":" + minute(), windowWidth - 55, 50);
+  
 
   // info text specs
   textAlign(LEFT, TOP);
@@ -58,8 +57,8 @@ function draw() {
   textLeading(28);
   textWrap(WORD);
 
-  // location text
-  text("40° 42' 45.9936'' N 74° 0' 21.5064'' W", windowWidth/2, (windowHeight/2) + 125)
+  // other text
+  text(hour() + ":" + minute() + "\n40° 42' 45.9936'' N 74° 0' 21.5064'' W", windowWidth/2, (windowHeight/2) + 100)
 
   if (cloudCondition !== null && windSpeed !== null) {
     text(`cloud status: ${cloudCondition}`, windowWidth/2, (windowHeight/2) + 150);
@@ -134,7 +133,7 @@ async function fetchCloudData() {
     cloudCondition = data.weather[0].description;
     
     //THIS IS FOR TESTING AND THE DEMO!!!
-    //cloudCondition = "overcast";
+    //cloudCondition = "few"; //clear, few, scattered, broken, overcast
     /////////////////////////////////////
 
     charset = getCharsetForCondition(cloudCondition)
