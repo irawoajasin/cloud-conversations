@@ -48,8 +48,7 @@ function setup() {
 function draw() {
   background(217, 238, 244);
   textSize(14);
-  text('cloud conversations at the sabey data center', windowWidth - 225, 25);
-  text(hour() + ":" + minute(), windowWidth - 55, 50);
+
 
   // info text specs
   textAlign(LEFT, TOP);
@@ -134,7 +133,7 @@ async function fetchCloudData() {
     cloudCondition = data.weather[0].description;
     
     //THIS IS FOR TESTING AND THE DEMO!!!
-    //cloudCondition = "few"; //clear, few, scattered, broken, overcast
+    //cloudCondition = "clear"; //clear, few, scattered, broken, overcast
     /////////////////////////////////////
 
     charset = getCharsetForCondition(cloudCondition)
@@ -162,15 +161,16 @@ function displayPoem (condition, speed) {
     ],
     "<adj>": ["restless", "swollen", "flickering", "anxious", "roaring", "silent", "charged", "unaware", "heated", "drifting"],
     "<noun>": ["wires", "information", "data", "sparks", "signals", "algorithms", "code"],
+    "<sentNoun>": ["legacy", "ancestry", "lineage", "memory", "love", "care"],
     "<verb>": ["swells", "burns", "expands", "consumes", "rushes", "drifts", "echoes", "unfolds"],
-    "<phenomenon>": ["data storms", "electric fronts", "thermal updrafts", "digital winds", "algorithmic haze", "carbon fog"],
-    "<warning>": ["take heed", "listen closely", "slow your pulse", "preserve what remains", "remember your weight"],
+    "<phenomenon>": ["captured memory", "a determinate future", "an omnipresent eye"],
+    "<warning>": ["cover your face", "watch back", "alter your gait", "delete your browser history"],
     "<time>": ["soon", "by dusk", "through the night", "before long", "with each passing second", "as cycles turn"],
 
     "<shortForecast>": [
       "Expect <phenomenon> <time>.",
-      "Forecast: <adj> <noun> and <phenomenon> ahead.",
-      "A brief signal through the air — <phenomenon> approach."
+      "Forecast: <adj> <noun> ahead.",
+      "A brief signal <verb> through the air"
     ]
   });
 
@@ -181,15 +181,16 @@ function displayPoem (condition, speed) {
     ],
     "<adj>": ["restless", "swollen", "flickering", "anxious", "roaring", "silent", "charged", "unaware", "heated", "drifting"],
     "<noun>": ["wires", "information", "data", "sparks", "signals", "algorithms", "code"],
+    "<sentNoun>": ["legacy", "ancestry", "lineage", "memory", "love", "care"],
     "<verb>": ["swells", "burns", "expands", "consumes", "rushes", "drifts", "echoes", "unfolds"],
-    "<phenomenon>": ["data storms", "electric fronts", "thermal updrafts", "digital winds", "algorithmic haze", "carbon fog"],
-    "<warning>": ["take heed", "listen closely", "slow your pulse", "preserve what remains", "remember your weight"],
+    "<phenomenon>": ["captured memory", "a determinate future", "an omnipresent eye"],
+    "<warning>": ["cover your face", "watch back", "alter your gait", "delete your browser history"],
     "<time>": ["soon", "by dusk", "through the night", "before long", "with each passing second", "as cycles turn"],
 
     "<mediumForecast>": [
-      "Winds of <adj> memory <verb> beneath us. Expect <phenomenon> <time>.",
+      "Winds of <sentNoun> <verb> beneath us. Expect <phenomenon> <time>.",
       "We drift and watch as <phenomenon> <verb> through your restless networks.",
-      "A front of <phenomenon> gathers, urging you to <warning>."
+      "A front of <noun> gathers, urging you to <warning>."
     ]
   });
 
@@ -198,18 +199,18 @@ function displayPoem (condition, speed) {
     "<start>": [
       "<longForecast>"
     ],
-    "<adj>": ["restless", "temporal", "flickering", "anxious", "roaring", "silent", "charged", "unaware", "heated", "drifting"],
+    "<adj>": ["restless", "swollen", "flickering", "anxious", "roaring", "silent", "charged", "unaware", "heated", "drifting"],
     "<noun>": ["wires", "information", "data", "sparks", "signals", "algorithms", "code"],
     "<sentNoun>": ["legacy", "ancestry", "lineage", "memory", "love", "care"],
     "<verb>": ["swells", "burns", "expands", "consumes", "rushes", "drifts", "echoes", "unfolds"],
-    "<phenomenon>": ["data storms", "electric fronts", "thermal updrafts", "digital winds", "algorithmic haze", "carbon fog"],
-    "<warning>": ["take heed", "listen closely", "slow your pulse", "preserve what remains", "remember your weight"],
+    "<phenomenon>": ["captured memory", "a determinate future", "an omnipresent eye"],
+    "<warning>": ["cover your face", "watch back", "alter your gait", "delete your browser history"],
     "<time>": ["soon", "by dusk", "through the night", "before long", "with each passing second", "as cycles turn"],
 
     "<longForecast>": [
-      "From horizon to horizon, a dense layer forms. <phenomenon> <verb> beneath the surface, and the digital sky grows <adj>. Forecast: mounting pressure and restless winds. We urge you to <warning>.",
-      "How do the <phenomenon> carry a sense of <sentNoun>? With their <adj> <noun>, we feel a desire for them to make their way back home <time>. Whispering to us to <warning>",
-      "An approaching mass signals change. <phenomenon> build, circuits grow <adj>, and we forecast a long night ahead. We speak through layered skies: <warning>."
+      //"From horizon to horizon, a dense layer forms. <phenomenon> <verb> beneath the surface, and the digital sky grows <adj>. Forecast: mounting pressure and restless winds. We urge you to <warning>.",
+      "How do the <phenomenon> carry a sense of <sentNoun>? With their <adj> <noun>, we feel a desire for them to make their way back home <time>. Whispering to us to <warning>"//,
+      //"An approaching mass signals change. <phenomenon> build, circuits grow <adj>, and we forecast a long night ahead. We speak through layered skies: <warning>."
     ]
   });
 
