@@ -134,7 +134,7 @@ async function fetchCloudData() {
     cloudCondition = data.weather[0].description;
     
     //THIS IS FOR TESTING AND THE DEMO!!!
-    cloudCondition = "overcast";
+    //cloudCondition = "overcast";
     /////////////////////////////////////
 
     charset = getCharsetForCondition(cloudCondition)
