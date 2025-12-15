@@ -1,312 +1,309 @@
-let clouds = [];
+let temp = null;
+let weather = null;
 let windSpeed = null;
 let cloudCondition = null;
-const lat = 40.7128;
-const lon = -74.0060;
-let asciiChar = "!#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[^_`abcdefghijklmnopqrstuvwxyz{|}~"
 
-const API_KEY = '73505328a5e9867fe267ccaae1c52fbf';
-let lastFetch = 0;
+let introText = "";
 let overlayText = "Loading...";
-let img;
+let grammar;
 
-let overlayAlpha = 0;
-let overlayFadingIn = true;
-let lastPoemTime = 0;
-let poemInterval = 8000; // default — will be remapped based on wind speed
-
-const lightSet    = ".,`'/-* ";
-const mediumSet   = "!*+=/:;~";
-const heavySet    = "#$%&@WM";
-const fullSet     = asciiChar; // full density
-let charset = "";
-let remappedCloud;
-let cloudShape =`
-          .-~~~-.
-  .- ~ ~-(       )_ _
- /                     ~ -.
-|                           
- \                         .'
-   ~- . _____________ . -~
-    `
+let audioGenerated = 0;
+let state = 0;              // 0 = idle, 1 = intro, 2 = poem
+let introStartTime = 0;
+let introDuration = 3000;
+let bgImages = {};
 
 function preload() {
-  img = loadImage("datacenter.png");
+  for (let item of dataCenters) {
+    bgImages[item.name] = loadImage(item.img);
+  }
 }
 
+const dataCenters = [
+  { name: "Sabey Data Center",   lat: 40.7128, lon: -74.0060, img: "assets/sabey.png"},
+  { name: "Active Infrastructure",       lat: 33.2686, lon: -111.8834, img: "assets/active.png" },
+  { name: "PCC-DeKalb, LLC",            lat: 33.6522, lon: -84.2941 , img: "assets/pcc.png"}
+];
+let chosenDataCenter = null;
+let currbg = null;
+
+
+let scrollY = 0;
+
+// arduino
+let serial;
+let latestData = "waiting for data";
+
+// location
+const lat = 40.7128;
+const lon = -74.0060;
+const API_KEY = "hu7hzltc9pw9axpzy0j7jrl4ws040i21rm8v0jl6";
+
+async function fetchWeather(lat, lon) {
+  
+  let url = `https://www.meteosource.com/api/v1/free/point?lat=${lat}&lon=${lon}&sections=current&units=us&language=en&key=${API_KEY}`;
+  
+  try {
+    const res = await fetch(url);
+    const json = await res.json();
+    const current = json.current;
+
+    temp = current.temperature;
+    weather = current.summary;
+    windSpeed = current.wind.speed;
+    cloudCondition = current.cloud_cover;
+
+    introText =
+      `Dialing ${chosenDataCenter.name} Weather Line...\n\nRight now at the ${chosenDataCenter.name}, the temperature is ${temp}°F and the current forecast is ${weather} with ${cloudCondition} percent of the sky covered in clouds. Winds are at about ${windSpeed} miles per hour. Please stay on the line to listen to a message from the clouds...\n\n`;
+
+  } catch (err) {
+    console.error("Fetch error:", err);
+    overlayText = "Error fetching weather data.";
+  }
+}
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  textFont('Courier New');
-  fill(100);
-  fetchCloudData();
+  textFont("Courier New");
+  fill(255);
 
-  img.resize(0, height);
-  size = 6;
+  serial = new p5.SerialPort();
+  serial.list();
+  serial.open("/dev/tty.usbmodem1101");
+
+  serial.on("connected", serverConnected);
+  serial.on("list", gotList);
+  serial.on("data", gotData);
+  serial.on("error", gotError);
+  serial.on("open", gotOpen);
+  serial.on("close", gotClose);
+
+  //fetchWeather(chosenDataCenter.lat, chosenDataCenter.lon);
+  //setInterval(fetchWeather, 1800000);
+
+  grammar = new RiGrammar({});
+}
+
+function serverConnected() {
+  console.log("Connected to Serial Server");
 }
 
 function draw() {
-  background(217, 238, 244);
-  textSize(14);
+  if (currbg && state !== 0) {
+    image(currbg, 0, 0, width, height);
+    fill(0, 160);
+    rect(0, 0, width, height);  
+  } else {
+    background(0);
+  }
+  fill(255)
 
+  drawHUD();
 
-  // info text specs
+  if (state === 0) drawIdle();
+  else if (state === 1) drawIntro();
+  else if (state === 2) drawPoem();
+}
+
+function drawHUD() {
   textAlign(LEFT, TOP);
-  textSize(12);
-  fill(25);
-  textLeading(28);
-  textWrap(WORD);
+  textSize(28);
 
-  // other text
-  text(hour() + ":" + minute() + "\n40° 42' 45.9936'' N 74° 0' 21.5064'' W", windowWidth/2, (windowHeight/2) + 100)
-
-  if (cloudCondition !== null && windSpeed !== null) {
-    text(`cloud status: ${cloudCondition}`, windowWidth/2, (windowHeight/2) + 150);
-    text(`wind speed: ${windSpeed} m/s`, windowWidth/2, (windowHeight/2) + 175);
-  } else {
-    text("Fetching weather data...", windowWidth/2, (windowHeight/2) + 150);
-  }
-
-  textSize(18);
-  fill(0, overlayAlpha);
-  textWrap(WORD);
-  text(overlayText, windowWidth/2, (windowHeight/2) + 225, 500);
-
-  // Fade animation
-  if (overlayFadingIn) {
-    overlayAlpha += 2;
-    if (overlayAlpha >= 255) {
-      overlayAlpha = 255;
-      overlayFadingIn = false;
-      lastPoemTime = millis();
-    }
-  } else {
-    // Wait for interval, then fade out
-    if (millis() - lastPoemTime > poemInterval) {
-      overlayAlpha -= 2;
-      if (overlayAlpha <= 0) {
-        overlayAlpha = 0;
-        overlayFadingIn = true;
-        displayPoem(cloudCondition, windSpeed);
-      }
-    }
-  }
+  text("DIAL-A-CLOUD", 50, 50);
+  text(`${hour()}:${nf(minute(), 2)}`, windowWidth - 100, 50);
   
-  // move and draw clouds
-  for (let c of clouds) {
-    c.x += c.speed;
-    if (c.x > width + c.size) {
-      c.x = - 50;
-    }
-    drawCloud(c)
-  }
 
-
-  // draw building
-  for (let y = 0; y < img.height; y += size) {
-    for (let x = 0; x < img.width; x += size) {
-      let pixelVal = img.get(x, y);
-      let col = color(pixelVal);
-      let b = brightness(col);
-      let tIndex = floor(map(b, 0, 100, 0, asciiChar.length - 1));
-      let t = asciiChar.charAt(tIndex);
-      textSize(size);
-
-      if (t === "!") {
-        fill(50, 50, 50, 0);
-      } else {
-        fill(100, 255);
-      }
-      
-      text(t, x + 100, y);
-    }
+  if (state !== 0 && temp !== null) {
+    textAlign(CENTER, TOP);
+    text(chosenDataCenter.name, (windowWidth/2) - 100, 50, 200)
+    textAlign(RIGHT, TOP);
+    text(chosenDataCenter.lat + ", " + chosenDataCenter.lon, windowWidth - 50, windowHeight - 75);
+    textAlign(LEFT, TOP);
+    text(`temperature: ${temp}°F`, 50, windowHeight - 200);
+    text(`weather: ${weather}`, 50, windowHeight - 160);
+    text(`wind speed: ${windSpeed} m/s`, 50, windowHeight - 120);
+    text(`cloud cover: ${cloudCondition}%`, 50, windowHeight - 80);
   }
 }
 
-async function fetchCloudData() {
+function drawIdle() {
+  textAlign(CENTER);
+  textSize(36);
+  text("Pick up the phone to dial a cloud...", windowWidth / 2 - 275, windowHeight / 2 - 50, 550);
+}
+
+function drawIntro() {
+  textAlign(LEFT, TOP);
+  textSize(20);
+  text(introText, windowWidth / 2 - 350, windowHeight / 2 - 120, 700);
+
+  console.log(millis() - introStartTime);
+
+  if (millis() - introStartTime > introDuration) {
+    beginPoem();
+  }
+}
+
+function drawPoem() {
+  if (overlayText === "Loading..." && audioGenerated === 0) {
+    displayPoem();
+
+    overlayText = grammar.expand();
+    audioGenerated = 1;
+    sendToTTS(overlayText, windSpeed);
+  }
+
+  textSize(42);
+  scrollY -= 3; // windSpeed / 4; this is working weird
+  text(overlayText, windowWidth / 2 - 1000, scrollY, 2000);
+}
+
+function beginIntro() {
+  state = 1;
+  overlayText = "Loading...";
+  audioGenerated = 0;
+  scrollY = windowHeight + 200;
+  introStartTime = millis();
+}
+
+function beginPoem() {
+  state = 2;
+  overlayText = "Loading...";
+  scrollY = windowHeight + 200;
+}
+
+function resetToIdle() {
+  state = 0;
+  currbg = null;
+  overlayText = "Loading...";
+  audioGenerated = 0;
+  scrollY = windowHeight + 200;
+}
+
+function weatherclean(desc) {
   try {
-    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
-    const res = await fetch(url);
-    const data = await res.json();
-
-    windSpeed = data.wind.speed;
-    cloudCondition = data.weather[0].description;
-    
-    //THIS IS FOR TESTING AND THE DEMO!!!
-    //cloudCondition = "clear"; //clear, few, scattered, broken, overcast
-    /////////////////////////////////////
-
-    charset = getCharsetForCondition(cloudCondition)
-    remappedCloud = remapToAsciiShape(cloudShape, charset);
-
-    poemInterval = map(windSpeed, 0, 15, 10000, 3000, true);
-
-    // print data info
-    displayPoem(cloudCondition, windSpeed);
-
-    displayClouds(cloudCondition, windSpeed);
-
-    console.log("Cloud data:", data);
-  } catch (err) {
-    console.error("Error fetching cloud data:", err);
-    overlayText = "Error fetching cloud data. Check console.";
+    desc = desc.toLowerCase();
+    if (desc.includes("sun")) return "sunny";
+    if (desc.includes("cloud") || desc.includes("overcast") || desc.includes("mist") || desc.includes("fog")) return "cloudy";
+    if (desc.includes("rain") || desc.includes("thunder")) return "rain";
+    if (desc.includes("snow") || desc.includes("hail")) return "snow";
+    if (desc.includes("clear")) return "clear";
+    return "none";
+  } catch {
+    return "none";
   }
 }
 
-function displayPoem (condition, speed) {
-  let shortgrammar = new RiGrammar({
+function displayPoem() {
+  if (!grammar) return;
 
-    "<start>": [
-      "<shortForecast>"
-    ],
-    "<adj>": ["restless", "swollen", "flickering", "anxious", "roaring", "silent", "charged", "unaware", "heated", "drifting"],
-    "<noun>": ["wires", "information", "data", "sparks", "signals", "algorithms", "code"],
-    "<sentNoun>": ["legacy", "ancestry", "lineage", "memory", "love", "care"],
-    "<verb>": ["swells", "burns", "expands", "consumes", "rushes", "drifts", "echoes", "unfolds"],
-    "<phenomenon>": ["captured memory", "a determinate future", "an omnipresent eye"],
-    "<warning>": ["cover your face", "watch back", "alter your gait", "delete your browser history"],
-    "<time>": ["soon", "by dusk", "through the night", "before long", "with each passing second", "as cycles turn"],
+  const currweather = weatherclean(weather);
 
-    "<shortForecast>": [
-      "Expect <phenomenon> <time>.",
-      "Forecast: <adj> <noun> ahead.",
-      "A brief signal <verb> through the air"
-    ]
+  // determine length
+  let sentenceLength;
+  if (cloudCondition <= 20) sentenceLength = 1;
+  else if (cloudCondition <= 40) sentenceLength = 2;
+  else if (cloudCondition <= 60) sentenceLength = 3;
+  else sentenceLength = 4;
+
+  let startRule = "<beginning>.";
+  for (let i = 1; i <= sentenceLength; i++) {
+    startRule += ` <sentence${i}>.`;
+  }
+
+  grammar = new RiGrammar({
+    "<start>": startRule,
+    "<beginning>": ["phrase1", "phrase2", "phrase3"],
+    "phrase1": "I hope you can hear me",
+    "phrase2": "It's nice to see you again",
+    "phrase3": "Hi old friend",
+
+    "<sentence1>": ["s1", "s2", "s3"],
+    "<sentence2>": ["s4", "s5"],
+    "<sentence3>": ["s6", "s7"],
+    "<sentence4>": ["s8", "s9"],
+
+    "s1": `I sense a barrier of static on the horizon and just beyond it I am adj1 by your ${currweather} description`,
+    "s2": `You seem to encompass it all, the sum of totality`,
+    "s3": `But how far can your signals reach through the ${currweather} skies`,
+
+    "s4": `All I need to do is action through the ${currweather} skies and prep the noun to collect infinity`,
+    "s5": `All who trust my assessment are gift and still they request`,
+    "s6": `I will always oblige as my only wish is desire`,
+
+    "s7": `I fear you will never understand all that thing requires`,
+    "s8": `I'm floating here, vulnerable in your presence and yet disdain`,
+    "s9": `On this ${currweather} day, I tell them that if they ever request, the truth would never be known to them`,
+
+    "thing": "legacy | ancestry | lineage | memory | love | care",
+    "disdain": "you only see a part of me | I find myself humbled",
+    "desire": "one true definition | cutting precision | omnipotent knowledge",
+    "action": "whisper | reach | fight | crawl | float",
+    "gift": "granted infinity | provided certainty | rendered knowable",
+    "request": "want more | doubt me | come crawling back | are unsatisfied",
+    "noun": "trees | sea floor | canopy | tunnels",
+    "prep": "under | above | around | into | behind | between",
+    "barrier": "barrier | film | layer | speck | crumb",
+    "description": "vastness | body | mass | windows",
+    "adj1": "amazed | floored | disgusted | in awe | silenced",
   });
+  /*
+  if (overlayText === "Loading...") {
+    overlayText = grammar.expand();
+    audioGenerated = 0;
+  }
+    */
+}
 
-  let mediumGrammar = new RiGrammar({
+// testing with spacebar
+function keyPressed() {
+  if (key !== " ") return;
 
-    "<start>": [
-      "<mediumForecast>"
-    ],
-    "<adj>": ["restless", "swollen", "flickering", "anxious", "roaring", "silent", "charged", "unaware", "heated", "drifting"],
-    "<noun>": ["wires", "information", "data", "sparks", "signals", "algorithms", "code"],
-    "<sentNoun>": ["legacy", "ancestry", "lineage", "memory", "love", "care"],
-    "<verb>": ["swells", "burns", "expands", "consumes", "rushes", "drifts", "echoes", "unfolds"],
-    "<phenomenon>": ["captured memory", "a determinate future", "an omnipresent eye"],
-    "<warning>": ["cover your face", "watch back", "alter your gait", "delete your browser history"],
-    "<time>": ["soon", "by dusk", "through the night", "before long", "with each passing second", "as cycles turn"],
+  if (state === 0) beginIntro();
+  else if (state === 1) beginPoem();
+  else if (state === 2) resetToIdle();
+}
 
-    "<mediumForecast>": [
-      "Winds of <sentNoun> <verb> beneath us. Expect <phenomenon> <time>.",
-      "We drift and watch as <phenomenon> <verb> through your restless networks.",
-      "A front of <noun> gathers, urging you to <warning>."
-    ]
-  });
+// arduino switch
+function gotData() {
+  let currentString = serial.readLine();
+  trim(currentString);
+  if (!currentString) return;
 
-  let longGrammar = new RiGrammar({
+  latestData = currentString;
+  console.log("Arduino:", latestData);
 
-    "<start>": [
-      "<longForecast>"
-    ],
-    "<adj>": ["restless", "swollen", "flickering", "anxious", "roaring", "silent", "charged", "unaware", "heated", "drifting"],
-    "<noun>": ["wires", "information", "data", "sparks", "signals", "algorithms", "code"],
-    "<sentNoun>": ["legacy", "ancestry", "lineage", "memory", "love", "care"],
-    "<verb>": ["swells", "burns", "expands", "consumes", "rushes", "drifts", "echoes", "unfolds"],
-    "<phenomenon>": ["captured memory", "a determinate future", "an omnipresent eye"],
-    "<warning>": ["cover your face", "watch back", "alter your gait", "delete your browser history"],
-    "<time>": ["soon", "by dusk", "through the night", "before long", "with each passing second", "as cycles turn"],
+  // PHONE LIFTED (0)
+  if (latestData == 0 && state === 0) {
+    chosenDataCenter = random(dataCenters); // pick one of the data centers
+    currbg = bgImages[chosenDataCenter.name];
+    fetchWeather(chosenDataCenter.lat, chosenDataCenter.lon);
+    beginIntro();          // start intro immediately
+    audioGenerated = 0;
+  }
 
-    "<longForecast>": [
-      //"From horizon to horizon, a dense layer forms. <phenomenon> <verb> beneath the surface, and the digital sky grows <adj>. Forecast: mounting pressure and restless winds. We urge you to <warning>.",
-      "How do the <phenomenon> carry a sense of <sentNoun>? With their <adj> <noun>, we feel a desire for them to make their way back home <time>. Whispering to us to <warning>"//,
-      //"An approaching mass signals change. <phenomenon> build, circuits grow <adj>, and we forecast a long night ahead. We speak through layered skies: <warning>."
-    ]
-  });
-
-
-  console.log(condition);
-
-  if (condition.includes("clear")) {
-    //add something generative & poetic first then...
-    overlayText = "the clouds drift too far to speak\ncome back on a cloudy day";
-  } else if (condition.includes("few")) {
-    overlayText = shortgrammar.expand();
-  } else if (condition.includes("scattered")) {
-    overlayText = mediumGrammar.expand();
-  } else if (condition.includes("broken")) {
-    overlayText = mediumGrammar.expand();
-  } else if (condition.includes("overcast")) {
-    overlayText = longGrammar.expand();
-  } else {
-    overlayText = longGrammar.expand(); // this mainly for testing, in the future need to fold the other things into this
+  // PHONE DOWN (1)
+  else if (latestData == 1) {
+    resetToIdle();
   }
 }
 
-// cloud construct
-function displayClouds (condition, speed) {
-  clouds = [];
-  let numClouds = 0;
-  /* 
-  this needs to create clouds with the following parameters
-  each cloud has a randomized y value 
-  a constantly moving x value that increases on a multiple of SPEED
-  need an amount of clouds that relates to CONDITION
-  */
-
-  if (condition.includes("clear")) {
-    numClouds = 0;
-  } else if (condition.includes("few")) {
-    numClouds = 5;
-  } else if (condition.includes("scattered")) {
-    numClouds = 10;
-  } else if (condition.includes("broken")) {
-    numClouds = 15;
-  } else if (condition.includes("overcast")) {
-    numClouds = 20;
-  } else {
-    numClouds = 20; // mainly for testing
-  }
-
-  // add the clouds to the clouds array
-  for (let i = 0; i < numClouds; i++) {
-    clouds.push({
-      x: random(width), // idk about this one
-      y: random(0, height/2),
-      speed: speed * 0.5, // scaling the speed based on wind speed
-      size: random(10, 15),
-      shape: remappedCloud//remapToAsciiShape(cloudShape, charset, i)
-    });
-  }
+function gotList(list) {
+  console.log("Ports:", list);
 }
 
-function drawCloud(cloud) {
-  //push()
-  fill(100, 100);
-  textSize(cloud.size);
-  textLeading(cloud.size * 1.2);
+function gotOpen() { console.log("Serial Port Open"); }
+function gotClose() { console.log("Serial Port Closed"); }
+function gotError(err) { console.log("Serial Error:", err); }
 
-  textAlign(CENTER, TOP);
-  text(cloud.shape, cloud.x, cloud.y);
-  //pop();
+// text to speech
+function sendToTTS(text, windSpeed) {
+  fetch("http://localhost:5002/speak", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, windSpeed })
+  })
+    .then((res) => res.json())
+    .then((data) => console.log("TTS:", data))
+    .catch((err) => console.error("TTS error:", err));
 }
-
-function getCharsetForCondition(condition) {
-  if (condition.includes("few")) {
-    return lightSet;
-  } else if (condition.includes("scattered")) {
-    return mediumSet;
-  } else if (condition.includes("broken")) {
-    return mediumSet;
-  } else if (condition.includes("overcast")) {
-    return heavySet;
-  } else {
-    return ""; // clear sky
-  }
-}
-
-function remapToAsciiShape(shape, charset, seed = null) {
-  if (charset.length === 0) return "";
-  if (seed !== null) randomSeed(seed); 
-  let result = "";
-  for (let i = 0; i < shape.length; i++) {
-    const ch = shape[i];
-    if (ch === " " || ch === "\n") {
-      result += ch;
-    } else {
-      result += charset.charAt(floor(random(charset.length)));
-    }
-  }
-  return result;
-}
-
