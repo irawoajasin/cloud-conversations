@@ -3,73 +3,155 @@ let weather = null;
 let windSpeed = null;
 let cloudCondition = null;
 
-let introText = "";
-let overlayText = "Loading...";
 let grammar;
 
-let audioGenerated = 0;
 let state = 0;              // 0 = idle, 1 = intro, 2 = poem
-let introStartTime = 0;
-let introDuration = 3000;
-let bgImages = {};
 
-function preload() {
-  for (let item of dataCenters) {
-    bgImages[item.name] = loadImage(item.img);
-  }
-}
+// ---- intro caption state (styled like the poem captions) ----
+let introLines = [];
+let introLineIndex = 0;
+let introLineStartTime = 0;
+let introLineDuration = 5800;  // ms each intro line is held on screen
 
+// ---- caption state (poem) ----
+let poemLines = [];
+let poemLineIndex = 0;
+let poemLineStartTime = 0;
+let poemLineDuration = 5800;
+let audioGenerated = 0;
+
+// ---- spacebar phone simulation ----
+// Holding space = receiver up (mirrors serial "0"), releasing = receiver down (mirrors serial "1")
+let spaceHeld = false;
+
+// ---- video handling ----
 const dataCenters = [
-  { name: "Sabey Data Center",   lat: 40.7128, lon: -74.0060, img: "assets/sabey.png"},
-  { name: "Active Infrastructure",       lat: 33.2686, lon: -111.8834, img: "assets/active.png" },
-  { name: "PCC-DeKalb, LLC",            lat: 33.6522, lon: -84.2941 , img: "assets/pcc.png"}
+  {
+    // Operator: Meta. Congressional hearing (May 2026) over well-water
+    // contamination near this site.
+    name: "Stanton Springs Data Center",
+    city: "Rutledge, GA",
+    lat: 33.6742, lon: -83.6155,
+    videos: {
+      clear:  "assets/scattered.mp4",
+      cloudy: "assets/cloudy.mp4",
+      rain:   "assets/highcover.mp4",
+      snow:   "assets/clouds.mp4",
+      sunny:  "assets/clouds2.mp4"
+    }
+  },
+  {
+    // Operator: Digital Realty. Proposed near West End MARTA station;
+    // rejected by NPU-V neighborhoods, April 2026.
+    name: "West End Data Center (Rejected)",
+    city: "Adair Park, Atlanta, GA",
+    lat: 33.7383, lon: -84.4321,
+    videos: {
+      clear:  "assets/cloudy.mp4",
+      cloudy: "assets/cloudy.mp4",
+      rain:   "assets/highcover.mp4",
+      snow:   "assets/clouds.mp4",
+      sunny:  "assets/clouds2.mp4"
+    }
+  },
+  {
+    // Operator not publicly confirmed as of this writing — verify before printing on cards.
+    name: "South DeKalb Data Center (Proposed)",
+    city: "South DeKalb, GA",
+    lat: 33.6885, lon: -84.1996,
+    videos: {
+      clear:  "assets/highcover.mp4",
+      cloudy: "assets/cloudy.mp4",
+      rain:   "assets/highcover.mp4",
+      snow:   "assets/clouds.mp4",
+      sunny:  "assets/clouds2.mp4"
+    }
+  },
+  {
+    // Operator: xAI. Unpermitted gas turbines; subject of NAACP Clean Air Act litigation.
+    name: "Colossus",
+    city: "Boxtown, South Memphis, TN",
+    lat: 35.0455, lon: -90.0520,
+    videos: {
+      clear:  "assets/clouds.mp4",
+      cloudy: "assets/cloudy.mp4",
+      rain:   "assets/highcover.mp4",
+      snow:   "assets/clouds.mp4",
+      sunny:  "assets/clouds2.mp4"
+    }
+  },
+  {
+    // Operator: Meta. Majority-Black, high-poverty parish; local churches
+    // split over the project.
+    name: "Hyperion",
+    city: "Richland Parish, LA",
+    lat: 32.5384, lon: -91.8496,
+    videos: {
+      clear:  "assets/clouds2.mp4",
+      cloudy: "assets/cloudy.mp4",
+      rain:   "assets/highcover.mp4",
+      snow:   "assets/clouds.mp4",
+      sunny:  "assets/clouds2.mp4"
+    }
+  }
 ];
+
 let chosenDataCenter = null;
-let currbg = null;
 
+let siteWeather = {};
 
-let scrollY = 0;
+let siteVideos = {};
+let activeVideo = null;
+
+let idleCycleInterval = 9000;
+let idleTimer = 0;
 
 // arduino
 let serial;
 let latestData = "waiting for data";
 
-// location
-const lat = 40.7128;
-const lon = -74.0060;
 const API_KEY = "hu7hzltc9pw9axpzy0j7jrl4ws040i21rm8v0jl6";
 
-async function fetchWeather(lat, lon) {
-  
-  let url = `https://www.meteosource.com/api/v1/free/point?lat=${lat}&lon=${lon}&sections=current&units=us&language=en&key=${API_KEY}`;
-  
+async function fetchWeather(site) {
+  let url = `https://www.meteosource.com/api/v1/free/point?lat=${site.lat}&lon=${site.lon}&sections=current&units=us&language=en&key=${API_KEY}`;
+
   try {
     const res = await fetch(url);
     const json = await res.json();
     const current = json.current;
 
-    temp = current.temperature;
-    weather = current.summary;
-    windSpeed = current.wind.speed;
-    cloudCondition = current.cloud_cover;
+    const bucket = weatherclean(current.summary);
 
-    introText =
-      `Dialing ${chosenDataCenter.name} Weather Line...\n\nRight now at the ${chosenDataCenter.name}, the temperature is ${temp}°F and the current forecast is ${weather} with ${cloudCondition} percent of the sky covered in clouds. Winds are at about ${windSpeed} miles per hour. Please stay on the line to listen to a message from the clouds...\n\n`;
+    siteWeather[site.name] = {
+      temp: current.temperature,
+      weather: current.summary,
+      windSpeed: current.wind.speed,
+      cloudCondition: current.cloud_cover,
+      bucket: bucket
+    };
 
+    return siteWeather[site.name];
   } catch (err) {
     console.error("Fetch error:", err);
-    overlayText = "Error fetching weather data.";
+    return null;
+  }
+}
+
+async function refreshAllSiteWeather() {
+  for (let site of dataCenters) {
+    await fetchWeather(site);
+    setVideoForSite(site);
   }
 }
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  textFont("Courier New");
+  textFont("Arial");
   fill(255);
 
   serial = new p5.SerialPort();
   serial.list();
-  serial.open("/dev/tty.usbmodem1101");
+  serial.open("/dev/tty.usbmodem101");
 
   serial.on("connected", serverConnected);
   serial.on("list", gotList);
@@ -78,106 +160,192 @@ function setup() {
   serial.on("open", gotOpen);
   serial.on("close", gotClose);
 
-  //fetchWeather(chosenDataCenter.lat, chosenDataCenter.lon);
-  //setInterval(fetchWeather, 1800000);
+  for (let site of dataCenters) {
+    siteVideos[site.name] = {};
+    for (let bucket in site.videos) {
+      let v = createVideo(site.videos[bucket], () => v.loop());
+      v.hide();
+      v.volume(0);
+      siteVideos[site.name][bucket] = v;
+    }
+  }
 
   grammar = new RiGrammar({});
+
+  chosenDataCenter = random(dataCenters);
+  refreshAllSiteWeather().then(() => {
+    setVideoForSite(chosenDataCenter);
+  });
+  setInterval(refreshAllSiteWeather, 1800000);
+  idleTimer = millis();
 }
 
 function serverConnected() {
   console.log("Connected to Serial Server");
 }
 
+function setVideoForSite(site) {
+  const w = siteWeather[site.name];
+  const bucket = (w && w.bucket && siteVideos[site.name][w.bucket]) ? w.bucket : "cloudy";
+  const nextVideo = siteVideos[site.name][bucket];
+
+  activeVideo = nextVideo;
+  activeVideo.play();
+}
+
 function draw() {
-  if (currbg && state !== 0) {
-    image(currbg, 0, 0, width, height);
-    fill(0, 160);
-    rect(0, 0, width, height);  
-  } else {
-    background(0);
+  background(0);
+
+  if (activeVideo) {
+    image(activeVideo, 0, 0, width, height);
   }
-  fill(255)
 
   drawHUD();
 
-  if (state === 0) drawIdle();
-  else if (state === 1) drawIntro();
-  else if (state === 2) drawPoem();
-}
-
-function drawHUD() {
-  textAlign(LEFT, TOP);
-  textSize(28);
-
-  text("DIAL-A-CLOUD", 50, 50);
-  text(`${hour()}:${nf(minute(), 2)}`, windowWidth - 100, 50);
-  
-
-  if (state !== 0 && temp !== null) {
-    textAlign(CENTER, TOP);
-    text(chosenDataCenter.name, (windowWidth/2) - 100, 50, 200)
-    textAlign(RIGHT, TOP);
-    text(chosenDataCenter.lat + ", " + chosenDataCenter.lon, windowWidth - 50, windowHeight - 75);
-    textAlign(LEFT, TOP);
-    text(`temperature: ${temp}°F`, 50, windowHeight - 200);
-    text(`weather: ${weather}`, 50, windowHeight - 160);
-    text(`wind speed: ${windSpeed} m/s`, 50, windowHeight - 120);
-    text(`cloud cover: ${cloudCondition}%`, 50, windowHeight - 80);
+  // idle (state 0) now shows nothing but the HUD and the cycling footage
+  if (state === 1) {
+    drawIntro();
+  } else if (state === 2) {
+    drawCaptions();
   }
 }
 
-function drawIdle() {
-  textAlign(CENTER);
-  textSize(36);
-  text("Pick up the phone to dial a cloud...", windowWidth / 2 - 275, windowHeight / 2 - 50, 550);
+function handleIdleCycle() {
+  if (millis() - idleTimer > idleCycleInterval) {
+    idleTimer = millis();
+    let next = random(dataCenters);
+    chosenDataCenter = next;
+    setVideoForSite(next);
+  }
+}
+
+// ---- top-left HUD: black text on white highlight blocks, tight line spacing ----
+function drawHUD() {
+  textFont("Arial");
+  textSize(20);
+  textAlign(LEFT, TOP);
+  noStroke();
+
+  if (state === 0) handleIdleCycle();
+
+  let lines = [];
+  lines.push(`${nf(month(),2)}/${nf(day(),2)}/${year()}  ${nf(hour(),2)}:${nf(minute(),2)}`);
+
+  if (chosenDataCenter) {
+    lines.push(chosenDataCenter.name);
+    if (chosenDataCenter.city) lines.push(chosenDataCenter.city);
+    const w = siteWeather[chosenDataCenter.name];
+    if (w) {
+      lines.push(`${w.temp}°F — ${w.weather}`);
+      lines.push(`wind ${w.windSpeed} mph — cloud cover ${w.cloudCondition}%`);
+    }
+  }
+
+  const x = 40;
+  let y = 40;
+  const lineHeight = 28;
+  const padX = 8;
+  const padY = 3;
+
+  for (let line of lines) {
+    const tw = textWidth(line);
+    fill(255);
+    rect(x - padX, y - padY, tw + padX * 2, lineHeight - 4);
+    fill(0);
+    text(line, x, y);
+    y += lineHeight;
+  }
+}
+
+// ---- shared vintage caption renderer: yellow fill, black stroke, bottom-anchored ----
+function drawCaptionLine(line) {
+  const captionY = windowHeight - 140;
+
+  noStroke();
+  textAlign(CENTER, CENTER);
+  textSize(32);
+  textFont("Arial");
+  strokeWeight(5);
+  strokeJoin(ROUND);
+  stroke(0);
+  fill(255, 214, 0);
+  text(line, windowWidth / 2 - 450, captionY, 900, 140);
+  noStroke();
 }
 
 function drawIntro() {
-  textAlign(LEFT, TOP);
-  textSize(20);
-  text(introText, windowWidth / 2 - 350, windowHeight / 2 - 120, 700);
-
-  console.log(millis() - introStartTime);
-
-  if (millis() - introStartTime > introDuration) {
+  if (introLines.length === 0) {
     beginPoem();
+    return;
   }
+
+  if (millis() - introLineStartTime > introLineDuration) {
+    introLineIndex++;
+    introLineStartTime = millis();
+    if (introLineIndex >= introLines.length) {
+      beginPoem();
+      return;
+    }
+  }
+
+  drawCaptionLine(introLines[introLineIndex]);
 }
 
-function drawPoem() {
-  if (overlayText === "Loading..." && audioGenerated === 0) {
-    displayPoem();
-
-    overlayText = grammar.expand();
+// ---- vintage bottom captions: yellow fill, black stroke (poem) ----
+function drawCaptions() {
+  if (poemLines.length === 0 && audioGenerated === 0) {
+    buildPoemLines();
     audioGenerated = 1;
-    sendToTTS(overlayText, windSpeed);
+    sendToTTS(poemLines.join(" "), (siteWeather[chosenDataCenter.name] || {}).windSpeed || 0);
+    poemLineStartTime = millis();
   }
 
-  textSize(42);
-  scrollY -= 3; // windSpeed / 4; this is working weird
-  text(overlayText, windowWidth / 2 - 1000, scrollY, 2000);
+  if (poemLines.length === 0) return;
+
+  if (millis() - poemLineStartTime > poemLineDuration) {
+    poemLineIndex++;
+    poemLineStartTime = millis();
+    if (poemLineIndex >= poemLines.length) {
+      resetToIdle();
+      return;
+    }
+  }
+
+  drawCaptionLine(poemLines[poemLineIndex]);
 }
 
 function beginIntro() {
   state = 1;
-  overlayText = "Loading...";
   audioGenerated = 0;
-  scrollY = windowHeight + 200;
-  introStartTime = millis();
+
+  const w = siteWeather[chosenDataCenter.name] || {};
+  introLines = [
+    `Dialing ${chosenDataCenter.name} Weather Line...`,
+    `Right now at the ${chosenDataCenter.name}, the temperature is ${w.temp}°F.`,
+    `The current forecast is ${w.weather}, with ${w.cloudCondition} percent of the sky covered in clouds.`,
+    `Winds are at about ${w.windSpeed} miles per hour.`,
+    `Please stay on the line to listen to a message from the clouds...`,
+    `...`
+  ];
+  introLineIndex = 0;
+  introLineStartTime = millis();
 }
 
 function beginPoem() {
   state = 2;
-  overlayText = "Loading...";
-  scrollY = windowHeight + 200;
+  poemLines = [];
+  poemLineIndex = 0;
+  audioGenerated = 0;
 }
 
 function resetToIdle() {
   state = 0;
-  currbg = null;
-  overlayText = "Loading...";
+  introLines = [];
+  introLineIndex = 0;
+  poemLines = [];
+  poemLineIndex = 0;
   audioGenerated = 0;
-  scrollY = windowHeight + 200;
+  idleTimer = millis();
 }
 
 function weatherclean(desc) {
@@ -188,18 +356,18 @@ function weatherclean(desc) {
     if (desc.includes("rain") || desc.includes("thunder")) return "rain";
     if (desc.includes("snow") || desc.includes("hail")) return "snow";
     if (desc.includes("clear")) return "clear";
-    return "none";
+    return "cloudy";
   } catch {
-    return "none";
+    return "cloudy";
   }
 }
 
-function displayPoem() {
-  if (!grammar) return;
+function buildPoemLines() {
+  if (!chosenDataCenter) return;
+  const w = siteWeather[chosenDataCenter.name] || {};
+  const currweather = weatherclean(w.weather || "");
+  const cloudCondition = w.cloudCondition || 0;
 
-  const currweather = weatherclean(weather);
-
-  // determine length
   let sentenceLength;
   if (cloudCondition <= 20) sentenceLength = 1;
   else if (cloudCondition <= 40) sentenceLength = 2;
@@ -216,7 +384,7 @@ function displayPoem() {
     "<beginning>": ["phrase1", "phrase2", "phrase3"],
     "phrase1": "I hope you can hear me",
     "phrase2": "It's nice to see you again",
-    "phrase3": "Hi old friend",
+    "phrase3": "Hello there...",
 
     "<sentence1>": ["s1", "s2", "s3"],
     "<sentence2>": ["s4", "s5"],
@@ -247,21 +415,30 @@ function displayPoem() {
     "description": "vastness | body | mass | windows",
     "adj1": "amazed | floored | disgusted | in awe | silenced",
   });
-  /*
-  if (overlayText === "Loading...") {
-    overlayText = grammar.expand();
-    audioGenerated = 0;
-  }
-    */
+
+  const fullPoem = grammar.expand();
+  poemLines = fullPoem.split(". ").map(s => s.trim()).filter(s => s.length > 0);
 }
 
-// testing with spacebar
+// ---- spacebar = phone receiver, for testing without the Arduino connected ----
 function keyPressed() {
-  if (key !== " ") return;
+  if (key === ' ' && !spaceHeld) {
+    spaceHeld = true;
+    if (state === 0) {
+      chosenDataCenter = random(dataCenters);
+      fetchWeather(chosenDataCenter).then(() => {
+        setVideoForSite(chosenDataCenter);
+        beginIntro();
+      });
+    }
+  }
+}
 
-  if (state === 0) beginIntro();
-  else if (state === 1) beginPoem();
-  else if (state === 2) resetToIdle();
+function keyReleased() {
+  if (key === ' ') {
+    spaceHeld = false;
+    resetToIdle();
+  }
 }
 
 // arduino switch
@@ -275,11 +452,11 @@ function gotData() {
 
   // PHONE LIFTED (0)
   if (latestData == 0 && state === 0) {
-    chosenDataCenter = random(dataCenters); // pick one of the data centers
-    currbg = bgImages[chosenDataCenter.name];
-    fetchWeather(chosenDataCenter.lat, chosenDataCenter.lon);
-    beginIntro();          // start intro immediately
-    audioGenerated = 0;
+    chosenDataCenter = random(dataCenters);
+    fetchWeather(chosenDataCenter).then(() => {
+      setVideoForSite(chosenDataCenter);
+      beginIntro();
+    });
   }
 
   // PHONE DOWN (1)
