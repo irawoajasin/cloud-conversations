@@ -151,7 +151,7 @@ function setup() {
 
   serial = new p5.SerialPort();
   serial.list();
-  serial.open("/dev/tty.usbmodem101");
+  serial.open("/dev/tty.usbmodemFA131");
 
   serial.on("connected", serverConnected);
   serial.on("list", gotList);
