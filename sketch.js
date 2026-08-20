@@ -154,7 +154,7 @@ function setup() {
 
   serial = new p5.SerialPort();
   serial.list();
-  serial.open("/dev/tty.usbmodemFA131", { baudrate: 9600 });
+  serial.open("/dev/tty.usbmodemFA131", { baudrate: 115200 });
 
   serial.on("connected", serverConnected);
   serial.on("list", gotList);
