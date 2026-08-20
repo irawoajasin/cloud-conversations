@@ -153,15 +153,19 @@ function setup() {
   fill(255);
 
   serial = new p5.SerialPort();
-  serial.list();
-  serial.open("/dev/tty.usbmodemFA131", { baudrate: 115200 });
 
-  serial.on("connected", serverConnected);
+  serial.on("connected", () => console.log("Serial server connected"));
   serial.on("list", gotList);
   serial.on("data", gotData);
   serial.on("error", gotError);
-  serial.on("open", gotOpen);
-  serial.on("close", gotClose);
+  serial.on("open", () => console.log("SERIAL PORT OPEN"));
+  serial.on("close", () => console.log("SERIAL PORT CLOSED"));
+
+  console.log("Listing serial ports...");
+  serial.list();
+
+  console.log("Opening:", "/dev/tty.usbmodemFA131");
+  serial.open("/dev/tty.usbmodemFA131");
 
   if (VIDEOS_ENABLED) {
     for (let site of dataCenters) {
@@ -448,23 +452,26 @@ function keyReleased() {
 // arduino switch
 function gotData() {
   let currentString = serial.readLine();
-  trim(currentString);
+  currentString = trim(currentString);
+
   if (!currentString) return;
 
   latestData = currentString;
+
   console.log("Arduino:", latestData);
 
-  // PHONE LIFTED (0)
-  if (latestData == 0 && state === 0) {
+  if (latestData === "0" && state === 0) {
+    console.log("PHONE UP");
+
     chosenDataCenter = random(dataCenters);
+
     fetchWeather(chosenDataCenter).then(() => {
       setVideoForSite(chosenDataCenter);
       beginIntro();
     });
-  }
 
-  // PHONE DOWN (1)
-  else if (latestData == 1) {
+  } else if (latestData === "1") {
+    console.log("PHONE DOWN");
     resetToIdle();
   }
 }
