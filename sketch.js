@@ -1,3 +1,6 @@
+// ---- DEBUG: set to false to skip loading/playing video entirely (fast testing) ----
+const VIDEOS_ENABLED = false;
+
 let temp = null;
 let weather = null;
 let windSpeed = null;
@@ -11,13 +14,13 @@ let state = 0;              // 0 = idle, 1 = intro, 2 = poem
 let introLines = [];
 let introLineIndex = 0;
 let introLineStartTime = 0;
-let introLineDuration = 5800;  // ms each intro line is held on screen
+let introLineDuration = 4200;  // ms each intro line is held on screen
 
 // ---- caption state (poem) ----
 let poemLines = [];
 let poemLineIndex = 0;
 let poemLineStartTime = 0;
-let poemLineDuration = 5800;
+let poemLineDuration = 5200;
 let audioGenerated = 0;
 
 // ---- spacebar phone simulation ----
@@ -47,7 +50,7 @@ const dataCenters = [
     city: "Adair Park, Atlanta, GA",
     lat: 33.7383, lon: -84.4321,
     videos: {
-      clear:  "assets/cloudy.mp4",
+      clear:  "assets/scattered.mp4",
       cloudy: "assets/cloudy.mp4",
       rain:   "assets/highcover.mp4",
       snow:   "assets/clouds.mp4",
@@ -60,7 +63,7 @@ const dataCenters = [
     city: "South DeKalb, GA",
     lat: 33.6885, lon: -84.1996,
     videos: {
-      clear:  "assets/highcover.mp4",
+      clear:  "assets/scattered.mp4",
       cloudy: "assets/cloudy.mp4",
       rain:   "assets/highcover.mp4",
       snow:   "assets/clouds.mp4",
@@ -73,7 +76,7 @@ const dataCenters = [
     city: "Boxtown, South Memphis, TN",
     lat: 35.0455, lon: -90.0520,
     videos: {
-      clear:  "assets/clouds.mp4",
+      clear:  "assets/scattered.mp4",
       cloudy: "assets/cloudy.mp4",
       rain:   "assets/highcover.mp4",
       snow:   "assets/clouds.mp4",
@@ -87,7 +90,7 @@ const dataCenters = [
     city: "Richland Parish, LA",
     lat: 32.5384, lon: -91.8496,
     videos: {
-      clear:  "assets/clouds2.mp4",
+      clear:  "assets/scattered.mp4",
       cloudy: "assets/cloudy.mp4",
       rain:   "assets/highcover.mp4",
       snow:   "assets/clouds.mp4",
@@ -160,13 +163,15 @@ function setup() {
   serial.on("open", gotOpen);
   serial.on("close", gotClose);
 
-  for (let site of dataCenters) {
-    siteVideos[site.name] = {};
-    for (let bucket in site.videos) {
-      let v = createVideo(site.videos[bucket], () => v.loop());
-      v.hide();
-      v.volume(0);
-      siteVideos[site.name][bucket] = v;
+  if (VIDEOS_ENABLED) {
+    for (let site of dataCenters) {
+      siteVideos[site.name] = {};
+      for (let bucket in site.videos) {
+        let v = createVideo(site.videos[bucket], () => v.loop());
+        v.hide();
+        v.volume(0);
+        siteVideos[site.name][bucket] = v;
+      }
     }
   }
 
@@ -185,6 +190,7 @@ function serverConnected() {
 }
 
 function setVideoForSite(site) {
+  if (!VIDEOS_ENABLED) return;
   const w = siteWeather[site.name];
   const bucket = (w && w.bucket && siteVideos[site.name][w.bucket]) ? w.bucket : "cloudy";
   const nextVideo = siteVideos[site.name][bucket];
@@ -222,7 +228,7 @@ function handleIdleCycle() {
 // ---- top-left HUD: black text on white highlight blocks, tight line spacing ----
 function drawHUD() {
   textFont("Arial");
-  textSize(20);
+  textSize(16);
   textAlign(LEFT, TOP);
   noStroke();
 
@@ -243,7 +249,7 @@ function drawHUD() {
 
   const x = 40;
   let y = 40;
-  const lineHeight = 28;
+  const lineHeight = 24;
   const padX = 8;
   const padY = 3;
 
@@ -263,10 +269,9 @@ function drawCaptionLine(line) {
 
   noStroke();
   textAlign(CENTER, CENTER);
-  textSize(32);
+  textSize(20);
   textFont("Arial");
-  strokeWeight(5);
-  strokeJoin(ROUND);
+  strokeWeight(3);
   stroke(0);
   fill(255, 214, 0);
   text(line, windowWidth / 2 - 450, captionY, 900, 140);
@@ -324,8 +329,7 @@ function beginIntro() {
     `Right now at the ${chosenDataCenter.name}, the temperature is ${w.temp}°F.`,
     `The current forecast is ${w.weather}, with ${w.cloudCondition} percent of the sky covered in clouds.`,
     `Winds are at about ${w.windSpeed} miles per hour.`,
-    `Please stay on the line to listen to a message from the clouds...`,
-    `...`
+    `Please stay on the line to listen to a message from the clouds...`
   ];
   introLineIndex = 0;
   introLineStartTime = millis();
@@ -384,7 +388,7 @@ function buildPoemLines() {
     "<beginning>": ["phrase1", "phrase2", "phrase3"],
     "phrase1": "I hope you can hear me",
     "phrase2": "It's nice to see you again",
-    "phrase3": "Hello there...",
+    "phrase3": "Hi old friend",
 
     "<sentence1>": ["s1", "s2", "s3"],
     "<sentence2>": ["s4", "s5"],
