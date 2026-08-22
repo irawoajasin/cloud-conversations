@@ -115,7 +115,7 @@ function setup() {
   serial.list();
 
   console.log("Opening:", "/dev/tty.usbmodemFA131");
-  serial.open("/dev/tty.usbmodemFA131");
+  serial.open("/dev/tty.usbmodemFD141");
 
   chosenDataCenter = random(dataCenters);
   refreshAllSiteWeather().then(() => {
