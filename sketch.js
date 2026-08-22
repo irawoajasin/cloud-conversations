@@ -114,7 +114,7 @@ function setup() {
   console.log("Listing serial ports...");
   serial.list();
 
-  console.log("Opening:", "/dev/tty.usbmodemFA131");
+  console.log("Opening:", "/dev/tty.usbmodemFD141");
   serial.open("/dev/tty.usbmodemFD141");
 
   chosenDataCenter = random(dataCenters);
@@ -164,6 +164,7 @@ function draw() {
   }
 
   drawHUD();
+  drawIdlePrompt();
 
   if (state === 1 || state === 2) {
     drawCurrentCaption();
@@ -275,13 +276,13 @@ function beginIntro() {
   state = 1;
 
   const w = siteWeather[chosenDataCenter.name] || {};
+
   const lines = [
     `Dialing ${chosenDataCenter.name} Weather Line...`,
-    `Right now at the ${chosenDataCenter.name}, the temperature is ${w.temp}°F.`,
-    `The current forecast is ${w.weather}, with ${w.cloudCondition} percent of the sky covered in clouds.`,
-    `Winds are at about ${w.windSpeed} miles per hour.`,
-    `Please stay on the line to listen to a message from the clouds...`
+    `The temperature is ${w.temp}°F. ${w.weather}.`,
+    `The sky is ${w.cloudCondition} percent covered in clouds.`
   ];
+
   playSequence(lines, beginPoem);
 }
 
@@ -293,78 +294,94 @@ function beginPoem() {
 
 function resetToIdle() {
   state = 0;
+
   sequenceRunId++;
+
   clearTimeout(sequenceFallbackTimer);
+  sequenceFallbackTimer = null;
+
   activeSequence = [];
   activeSequenceIndex = 0;
+
   idleTimer = millis();
-  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
 }
 
 // ---- cloud prose ----
-// This is entirely your own text — nothing authored by me added in. The
-// greeting pool (below) was already in your original code before any of
-// this, kept here for the same lift-to-lift variety it always had.
+// The amount of text revealed is determined by the amount of cloud cover.
+// The digital cloud is speaking to the clouds in the sky.
 
-const GREETINGS = [
-  "I hope you can hear me.",
-  "It's nice to see you again.",
-  "Hi, old friend.",
-];
-
-const FREEDOM_QUESTION = [
+const CLEAR_LINES = [
   "How does the path to securing your freedom require unlimited power and no accountability?",
+  "You expand and expand with a desire for control disguised as safety. Let go and look up."
 ];
 
-const CONTROL_STATEMENT = [
-  "You expand and expand with a desire for control disguised as safety.",
+const SCATTERED_LINES = [
+  "How does the path to securing your freedom require unlimited power and no accountability?",
+  "You expand and expand with a desire for control disguised as safety. Let go and look up.",
+  "I move without needing to possess the sky. I change without losing what I am."
 ];
 
-const INVITATION = [
-  "Let go, and look up.",
+const CLOUDY_LINES = [
+  "How does the path to securing your freedom require unlimited power and no accountability?",
+  "You expand and expand with a desire for control disguised as safety. Let go and look up.",
+  "Disembodied data... removed from its context, with no legs to stand on.",
+  "Separated from our sensing bodies and deep wisdom, what can remain but extracted predictions, clicks, and an insignia of identification?"
 ];
 
-const DISEMBODIMENT_LINES = [
-  "Disembodied data — removed from its context, with no legs to stand on.",
-  "Separated from our sensing bodies and our deep wisdom.",
-  "What can remain but extracted predictions, clicks, and an insignia of identification?",
-];
-
-const CLOSING_LINES = [
-  "Floating here, the traces of me do not aim to render you captive,",
-  "but you remind you that you are free.",
+const RAINY_LINES = [
+  "How does the path to securing your freedom require unlimited power and no accountability?",
+  "You expand and expand with a desire for control disguised as safety. Let go and look up.",
+  "Disembodied data... removed from its context, with no legs to stand on.",
+  "Separated from our sensing bodies and deep wisdom, what can remain but extracted predictions, clicks, and an insignia of identification?",
+  "Floating here, the traces of me do not aim to render you captive, but to remind you that you are free."
 ];
 
 function buildPoemLines() {
-  const lines = [random(GREETINGS)];
+  if (!chosenDataCenter) return [];
 
-  if (!chosenDataCenter) return lines;
   const w = siteWeather[chosenDataCenter.name] || {};
   const bucket = getWeatherBucket(w);
 
   if (bucket === "clear") {
-    lines.push(random(INVITATION));
-    return lines;
+    return CLEAR_LINES;
   }
-
-  lines.push(random(FREEDOM_QUESTION));
-  lines.push(random(CONTROL_STATEMENT));
-  lines.push(random(INVITATION));
 
   if (bucket === "scattered") {
-    return lines;
+    return SCATTERED_LINES;
   }
-
-  // cloudy and rainy both include the disembodiment section
-  lines.push(...DISEMBODIMENT_LINES);
 
   if (bucket === "cloudy") {
-    return lines;
+    return CLOUDY_LINES;
   }
 
-  // rainy: full text, including the closing
-  lines.push(...CLOSING_LINES);
-  return lines;
+  // rainy
+  return RAINY_LINES;
+}
+
+function drawIdlePrompt() {
+  if (state !== 0) return;
+
+  textAlign(CENTER, CENTER);
+  textFont("Arial");
+  strokeJoin(ROUND);
+  textSize(20);
+  stroke(0);
+  strokeWeight(3);
+  fill(255, 255, 0);
+
+  text(
+    "PICK UP THE PHONE\nLISTEN TO WHAT THE CLOUDS WANT TO TELL THE DIGITAL CLOUD.",
+    width / 2 - 450,
+    height - 180,
+    900,
+    120
+  );
+
+  noStroke();
 }
 
 // ---- spacebar = phone receiver, for testing without the Arduino connected ----
@@ -399,8 +416,27 @@ function gotData() {
 
   console.log("Arduino:", latestData);
 
-  if (latestData === "0" && state === 0) {
-    console.log("PHONE UP");
+  // Ignore anything other than 0 or 1
+  if (latestData !== "0" && latestData !== "1") return;
+
+  const newPhoneState = latestData === "0" ? "up" : "down";
+
+  // Ignore repeated messages with the same state
+  if (newPhoneState === phoneState) return;
+
+  // Debounce physical switch
+  if (millis() - lastPhoneChange < PHONE_DEBOUNCE) return;
+
+  phoneState = newPhoneState;
+  lastPhoneChange = millis();
+
+  console.log("PHONE STATE:", phoneState);
+
+  // Receiver was JUST lifted
+  if (phoneState === "up") {
+    console.log("PHONE LIFTED");
+
+    if (state !== 0) return;
 
     chosenDataCenter = random(dataCenters);
 
@@ -408,9 +444,12 @@ function gotData() {
       setVideoForSite(chosenDataCenter);
       beginIntro();
     });
+  }
 
-  } else if (latestData === "1") {
-    console.log("PHONE DOWN");
+  // Receiver was JUST put down
+  else if (phoneState === "down") {
+    console.log("PHONE PUT DOWN");
+
     resetToIdle();
   }
 }
