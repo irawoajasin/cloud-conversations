@@ -65,6 +65,9 @@ let idleTimer = 0;
 // arduino
 let serial;
 let latestData = "waiting for data";
+let phoneState = "down";
+let lastPhoneChange = 0;
+const PHONE_DEBOUNCE = 300;
 
 const API_KEY = "hu7hzltc9pw9axpzy0j7jrl4ws040i21rm8v0jl6";
 
@@ -436,6 +439,7 @@ function gotData() {
   if (phoneState === "up") {
     console.log("PHONE LIFTED");
 
+    // Don't start another sequence if one is already playing
     if (state !== 0) return;
 
     chosenDataCenter = random(dataCenters);
@@ -449,7 +453,6 @@ function gotData() {
   // Receiver was JUST put down
   else if (phoneState === "down") {
     console.log("PHONE PUT DOWN");
-
     resetToIdle();
   }
 }
