@@ -114,7 +114,7 @@ function setup() {
   console.log("Listing serial ports...");
   serial.list();
 
-  console.log("Opening:", "/dev/tty.usbmodemFA131");
+  console.log("Opening:", "/dev/tty.usbmodemFD141");
   serial.open("/dev/tty.usbmodemFD141");
 
   chosenDataCenter = random(dataCenters);
