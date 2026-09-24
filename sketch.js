@@ -10,46 +10,60 @@ let spaceHeld = false;
 // debug
 const VIDEOS_ENABLED = true;
 
+// ---------------------------------------------------------------
+// DATA CENTERS
+// ---------------------------------------------------------------
 const dataCenters = [
   {
-    // Operator: Meta. Congressional hearing (May 2026) over well-water
-    // contamination near this site.
-    name: "Stanton Springs Data Center",
-    city: "Rutledge, GA",
-    lat: 33.6742, lon: -83.6155
+    name: "West End Data Center",
+    city: "713 Ralph David Abernathy Blvd., Atlanta, GA",
+    lat: 33.7383, lon: -84.4321,
+    image: "assets/img/dlr-website_Tier 1 - Data in Everything_Atlanta-Site-Plan-Image_r0hfyp-dithered.jpg",
+    forecast: [
+      "Power: 30 megawatts proposed",
+      "Water: ~100,000 gallons/day proposed",
+      "Size: 282,000 square feet",
+      "Community vote: 105–87 against zoning change",
+      "Neighborhood: ~250 ft from West End MARTA station",
+    ]
   },
+
   {
-    // Operator: Digital Realty. Proposed near West End MARTA station;
-    // rejected by NPU-V neighborhoods, April 2026.
-    name: "West End Data Center (Rejected)",
-    city: "Adair Park, Atlanta, GA",
-    lat: 33.7383, lon: -84.4321
-  },
-  {
-    // Operator not publicly confirmed as of this writing — verify before printing on cards.
-    name: "South DeKalb Data Center (Proposed)",
-    city: "South DeKalb, GA",
-    lat: 33.6885, lon: -84.1996
-  },
-  {
-    // Operator: xAI. Unpermitted gas turbines; subject of NAACP Clean Air Act litigation.
     name: "Colossus",
     city: "Boxtown, South Memphis, TN",
-    lat: 35.0455, lon: -90.0520
+    lat: 35.0455, lon: -90.0520,
+    image: "assets/img/colossus-dithered.jpg",
+    forecast: [
+      "Power: 1.2 GW permanent plant",
+      "Water: up to 13 million gallons/day",
+      "Air: Clean Air Act lawsuit over turbine emissions",
+      "Public hearing: 200+ residents gathered",
+      "Income: median household income ≈ $37,000"
+    ]
   },
+
   {
-    // Operator: Meta. Majority-Black, high-poverty parish; local churches
-    // split over the project.
     name: "Hyperion",
     city: "Richland Parish, LA",
-    lat: 32.5384, lon: -91.8496
+    lat: 32.5384, lon: -91.8496,
+    image: "assets/img/parish-dithered.jpg",
+    forecast: [
+      "Investment: $50+ billion",
+      "Size: nearly 10 million square feet",
+      "Power: 5 gigawatts of IT capacity",
+      "Land: 2,250+ acres",
+      "Construction: 7,500+ jobs at peak",
+    ]
   }
 ];
 
 let chosenDataCenter = null;
-
 let siteWeather = {};
+const dcImages = {};
 
+// ---------------------------------------------------------------
+// LOCAL CLOUD VIDEOS 
+// ---------------------------------------------------------------
 const VIDEO_CATEGORIES = {
   clear:     ["assets/video/clear/clear1.mp4", "assets/video/clear/clear2.mp4"],
   scattered: ["assets/video/scattered/scattered1.mp4", "assets/video/scattered/scattered2.mp4", "assets/video/scattered/scattered3.mp4"],
@@ -58,6 +72,39 @@ const VIDEO_CATEGORIES = {
 };
 
 let activeVideo = null;
+let currentBucket = null;
+let videoToken = 0;
+
+function setVideoForSite(site) {
+  if (!VIDEOS_ENABLED) return;
+  const bucket = getWeatherBucket(siteWeather[site.name]);
+  if (bucket === currentBucket && activeVideo) return;
+  currentBucket = bucket;
+
+  const pool = VIDEO_CATEGORIES[bucket] || VIDEO_CATEGORIES.cloudy;
+  const path = random(pool);
+  const token = ++videoToken;
+
+  const incoming = createVideo(path, () => {
+    if (token !== videoToken) { incoming.remove(); return; } // a newer request
+    incoming.elt.muted = true;   // muted attribute is needed for autoplay
+    incoming.volume(0);
+    incoming.loop();
+    const old = activeVideo;
+    activeVideo = incoming;
+    if (old) { old.stop(); old.remove(); }
+  });
+  incoming.hide();
+}
+
+// draw the video scaled to fill the screen without stretching (crops the overflow)
+function drawCoverVideo(v) {
+  const vw = v.elt.videoWidth, vh = v.elt.videoHeight;
+  if (!vw || !vh) { image(v, 0, 0, width, height); return; }
+  const s = max(width / vw, height / vh);
+  const dw = vw * s, dh = vh * s;
+  image(v, (width - dw) / 2, (height - dh) / 2, dw, dh);
+}
 
 let idleCycleInterval = 9000;
 let idleTimer = 0;
@@ -69,7 +116,7 @@ let phoneState = "down";
 let lastPhoneChange = 0;
 const PHONE_DEBOUNCE = 300;
 
-const API_KEY = "hu7hzltc9pw9axpzy0j7jrl4ws040i21rm8v0jl6";
+const API_KEY = "hu7hzltc9pw9axpzy0j7jrl4ws040i21rm8v0jl6"; 
 
 async function fetchWeather(site) {
   let url = `https://www.meteosource.com/api/v1/free/point?lat=${site.lat}&lon=${site.lon}&sections=current&units=us&language=en&key=${API_KEY}`;
@@ -93,10 +140,10 @@ async function fetchWeather(site) {
   }
 }
 
+// fetch only; the video is set once afterwards (one player, not one per site)
 async function refreshAllSiteWeather() {
   for (let site of dataCenters) {
     await fetchWeather(site);
-    setVideoForSite(site);
   }
 }
 
@@ -104,6 +151,13 @@ function setup() {
   createCanvas(windowWidth, windowHeight);
   textFont("Arial");
   fill(255);
+
+  // data center photos
+  for (const dc of dataCenters) {
+    loadImage(dc.image,
+      img => { dcImages[dc.name] = img; },
+      () => console.warn("Missing image:", dc.image));
+  }
 
   serial = new p5.SerialPort();
 
@@ -121,32 +175,15 @@ function setup() {
   serial.open("/dev/tty.usbmodemFD141");
 
   chosenDataCenter = random(dataCenters);
-  refreshAllSiteWeather().then(() => {
-    setVideoForSite(chosenDataCenter);
-  });
+  refreshAllSiteWeather().then(() => setVideoForSite(chosenDataCenter));
   setInterval(refreshAllSiteWeather, 1800000);
   idleTimer = millis();
 }
 
-function setVideoForSite(site) {
-  if (!VIDEOS_ENABLED) return;
-  const w = siteWeather[site.name];
-  const bucket = getWeatherBucket(w);
-  const pool = VIDEO_CATEGORIES[bucket] || VIDEO_CATEGORIES.cloudy;
-  const chosenPath = random(pool);
-
-  if (activeVideo) {
-    activeVideo.stop();
-    activeVideo.remove();
-    activeVideo = null;
-  }
-
-  activeVideo = createVideo(chosenPath, () => activeVideo.loop());
-  activeVideo.hide();
-  activeVideo.volume(0);
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }
 
-// determines the video (and now text) category from live cloud% + weather text
 function getWeatherBucket(w) {
   if (!w) return "cloudy";
   const desc = (w.weather || "").toLowerCase();
@@ -162,11 +199,13 @@ function getWeatherBucket(w) {
 function draw() {
   background(0);
 
-  if (activeVideo) {
-    image(activeVideo, 0, 0, width, height);
-  }
+  if (activeVideo) drawCoverVideo(activeVideo);
 
-  drawHUD();
+  if (state === 0) handleIdleCycle();
+
+  drawWeatherStrip();
+  if (state !== 0) drawDataCenterImage();
+  if (state !== 0) drawForecastStrip(); // forecast only appears once the phone is up
   drawIdlePrompt();
 
   if (state === 1 || state === 2) {
@@ -177,52 +216,115 @@ function draw() {
 function handleIdleCycle() {
   if (millis() - idleTimer > idleCycleInterval) {
     idleTimer = millis();
-    let next = random(dataCenters);
-    chosenDataCenter = next;
-    setVideoForSite(next);
+    chosenDataCenter = random(dataCenters);
+    setVideoForSite(chosenDataCenter);
   }
 }
 
-// top-left HUD: black text on white highlight blocks
-function drawHUD() {
-  textFont("Arial");
-  textSize(20);
-  textAlign(LEFT, TOP);
+const TOP_STRIP_H = 64;
+const BOTTOM_STRIP_H = 90;
+
+// splits the screen width into columns by relative weight
+function columnsFor(weights, margin = 40) {
+  const total = weights.reduce((a, b) => a + b, 0);
+  const usable = width - margin * 2;
+  let x = margin;
+  return weights.map(wt => {
+    const col = { x, w: usable * wt / total };
+    x += col.w;
+    return col;
+  });
+}
+
+function drawWeatherStrip() {
   noStroke();
+  fill(0);
+  rect(0, 0, width, TOP_STRIP_H);
+  if (!chosenDataCenter) return;
 
-  if (state === 0) handleIdleCycle();
+  const w = siteWeather[chosenDataCenter.name];
+  const cells = [
+    `${chosenDataCenter.name}, ${chosenDataCenter.city}`,
+    w ? `${w.temp}°F` : "--",
+    w ? w.weather : "--",
+    w ? `wind ${w.windSpeed} mph` : "--",
+    w ? `cloud cover ${w.cloudCondition}%` : "--",
+    `${nf(month(),2)}/${nf(day(),2)}/${year()}  ${nf(hour(),2)}:${nf(minute(),2)}`
+  ];
+  const cols = columnsFor([3, 0.8, 1.6, 1.2, 1.6, 1.6]);
 
-  let lines = [];
-  lines.push(`${nf(month(),2)}/${nf(day(),2)}/${year()}  ${nf(hour(),2)}:${nf(minute(),2)}`);
+  textFont("Arial");
+  textStyle(NORMAL);
+  textSize(20);
+  textAlign(LEFT, CENTER);
+  fill(255);
+  cells.forEach((c, i) => text(c, cols[i].x, 0, cols[i].w - 16, TOP_STRIP_H));
+}
 
-  if (chosenDataCenter) {
-    lines.push(chosenDataCenter.name);
-    if (chosenDataCenter.city) lines.push(chosenDataCenter.city);
-    const w = siteWeather[chosenDataCenter.name];
-    if (w) {
-      lines.push(`${w.temp}°F — ${w.weather}`);
-      lines.push(`wind ${w.windSpeed} mph — cloud cover ${w.cloudCondition}%`);
-    }
+function drawForecastStrip() {
+  if (!chosenDataCenter) return;
+
+  const y0 = height - BOTTOM_STRIP_H;
+
+  noStroke();
+  fill(0);
+  rect(0, y0, width, BOTTOM_STRIP_H);
+
+  const stats = chosenDataCenter.forecast || [];
+  const cols = columnsFor(stats.map(() => 1));
+
+  textFont("Arial");
+  textStyle(NORMAL);
+  textSize(18);
+  textAlign(LEFT, CENTER);
+  fill(255);
+
+  const padding = 30;
+
+  stats.forEach((s, i) => {
+    text(
+      s,
+      cols[i].x,
+      y0,
+      cols[i].w - padding,
+      BOTTOM_STRIP_H
+    );
+  });
+}
+
+function drawDataCenterImage() {
+  if (!chosenDataCenter) return;
+  const img = dcImages[chosenDataCenter.name];
+
+  const zoneTop = TOP_STRIP_H + 24;
+  const zoneBottom = height - BOTTOM_STRIP_H - 150 - 10; // stay above captions
+  const zoneH = zoneBottom - zoneTop;
+
+  let w = width / 3;
+  let h = img ? w * img.height / img.width : w * 9 / 16;
+  if (h > zoneH) { h = zoneH; w = img ? h * img.width / img.height : h * 16 / 9; }
+
+  const x = (width - w) / 2;
+  const y = zoneTop + (zoneH - h) / 2;
+
+  if (img) {
+    image(img, x, y, w, h);
+    return;
   }
 
-  const x = 40;
-  let y = 40;
-  const lineHeight = 32;
-  const padX = 8;
-  const padY = 3;
-
-  for (let line of lines) {
-    const tw = textWidth(line);
-    fill(255);
-    rect(x - padX, y - padY, tw + padX * 2, lineHeight - 4);
-    fill(0);
-    text(line, x, y);
-    y += lineHeight;
-  }
+  noStroke();
+  fill(40);
+  rect(x, y, w, h);
+  fill(255);
+  textFont("Arial");
+  textStyle(NORMAL);
+  textSize(16);
+  textAlign(CENTER, CENTER);
+  text(`[photo placeholder]\n${chosenDataCenter.image}`, x, y, w, h);
 }
 
 function drawCaptionLine(line) {
-  const captionY = windowHeight - 140;
+  const captionY = height - BOTTOM_STRIP_H - 150; // sits above the forecast strip
 
   noStroke();
   textAlign(CENTER, CENTER);
@@ -275,16 +377,36 @@ function playSequenceStep(runId, onComplete) {
   sequenceFallbackTimer = setTimeout(advance, fallbackMs);
 }
 
+// shared by the Arduino switch and the spacebar
+function startCall() {
+  if (state !== 0) return;
+
+  state = 1;
+  const myRun = ++sequenceRunId;   // a hang-up during the fetch cancels this call
+
+  chosenDataCenter = random(dataCenters);
+  startHum();
+
+  fetchWeather(chosenDataCenter).then(() => {
+    if (myRun !== sequenceRunId) return;
+    setVideoForSite(chosenDataCenter);
+    beginIntro();
+  });
+}
+
 function beginIntro() {
   state = 1;
 
-  const w = siteWeather[chosenDataCenter.name] || {};
+  const spokenName = chosenDataCenter.name.replace(/\s*\(.*?\)/g, "");
+  const w = siteWeather[chosenDataCenter.name];
 
-  const lines = [
-    `Dialing ${chosenDataCenter.name} Weather Line...`,
-    `The temperature is ${w.temp}°F. ${w.weather}.`,
-    `The sky is ${w.cloudCondition} percent covered in clouds.`
-  ];
+  const lines = [`Dialing ${spokenName} Weather Line...`];
+  if (w) {
+    lines.push(`The temperature is ${w.temp}°F. ${w.weather}.`);
+    lines.push(`The sky is ${w.cloudCondition} percent covered in clouds.`);
+  } else {
+    lines.push("The line is crackling. The sky is hard to read today.");
+  }
 
   playSequence(lines, beginPoem);
 }
@@ -307,6 +429,7 @@ function resetToIdle() {
   activeSequenceIndex = 0;
 
   idleTimer = millis();
+  stopHum();
 
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
@@ -349,20 +472,10 @@ function buildPoemLines() {
   const w = siteWeather[chosenDataCenter.name] || {};
   const bucket = getWeatherBucket(w);
 
-  if (bucket === "clear") {
-    return CLEAR_LINES;
-  }
-
-  if (bucket === "scattered") {
-    return SCATTERED_LINES;
-  }
-
-  if (bucket === "cloudy") {
-    return CLOUDY_LINES;
-  }
-
-  // rainy
-  return RAINY_LINES;
+  if (bucket === "clear") return CLEAR_LINES;
+  if (bucket === "scattered") return SCATTERED_LINES;
+  if (bucket === "cloudy") return CLOUDY_LINES;
+  return RAINY_LINES; // rainy
 }
 
 function drawIdlePrompt() {
@@ -379,7 +492,7 @@ function drawIdlePrompt() {
   text(
     "PICK UP THE PHONE\nLISTEN TO WHAT THE CLOUDS WANT TO TELL THE DIGITAL CLOUD.",
     width / 2 - 450,
-    height - 180,
+    height - 180, // no bottom strip while idle
     900,
     120
   );
@@ -389,15 +502,10 @@ function drawIdlePrompt() {
 
 // ---- spacebar = phone receiver, for testing without the Arduino connected ----
 function keyPressed() {
+  userStartAudio(); // browsers block audio until a user gesture
   if (key === ' ' && !spaceHeld) {
     spaceHeld = true;
-    if (state === 0) {
-      chosenDataCenter = random(dataCenters);
-      fetchWeather(chosenDataCenter).then(() => {
-        setVideoForSite(chosenDataCenter);
-        beginIntro();
-      });
-    }
+    startCall();
   }
 }
 
@@ -408,6 +516,10 @@ function keyReleased() {
   }
 }
 
+function mousePressed() {
+  userStartAudio();
+}
+
 // arduino switch
 function gotData() {
   let currentString = serial.readLine();
@@ -416,7 +528,6 @@ function gotData() {
   if (!currentString) return;
 
   latestData = currentString;
-
   console.log("Arduino:", latestData);
 
   // Ignore anything other than 0 or 1
@@ -435,23 +546,10 @@ function gotData() {
 
   console.log("PHONE STATE:", phoneState);
 
-  // Receiver was JUST lifted
   if (phoneState === "up") {
     console.log("PHONE LIFTED");
-
-    // Don't start another sequence if one is already playing
-    if (state !== 0) return;
-
-    chosenDataCenter = random(dataCenters);
-
-    fetchWeather(chosenDataCenter).then(() => {
-      setVideoForSite(chosenDataCenter);
-      beginIntro();
-    });
-  }
-
-  // Receiver was JUST put down
-  else if (phoneState === "down") {
+    startCall();
+  } else {
     console.log("PHONE PUT DOWN");
     resetToIdle();
   }

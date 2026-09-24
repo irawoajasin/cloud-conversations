@@ -1,8 +1,12 @@
-html, body {
-  margin: 0;
-  padding: 0;
+html, body { 
+  margin: 0; 
+  height: 100%; 
+  background: #000; 
+  overflow: hidden; 
+  cursor: none; 
 }
+    
 
 canvas {
-  display: block;
+  display: block; 
 }
