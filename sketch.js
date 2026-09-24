@@ -196,8 +196,8 @@ function setup() {
   console.log("Listing serial ports...");
   serial.list();
 
-  console.log("Opening:", "/dev/tty.usbmodemFD141");
-  serial.open("/dev/tty.usbmodemFD141");
+  console.log("Opening:", "COM3");
+  serial.open("COM3");
 
   chosenDataCenter = random(dataCenters);
   refreshAllSiteWeather().then(() => setVideoForSite(chosenDataCenter));
