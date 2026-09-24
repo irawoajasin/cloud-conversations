@@ -12,6 +12,10 @@ const VIDEOS_ENABLED = true;
 
 // ---------------------------------------------------------------
 // DATA CENTERS
+// image:    photo shown on top of the video when the phone is lifted
+// forecast: 3 short lines shown in the bottom "digital cloud forecast" strip.
+//           Anything in [BRACKETS] is a placeholder: replace with a sourced
+//           stat, or the brackets will show up on screen.
 // ---------------------------------------------------------------
 const dataCenters = [
   {
@@ -62,7 +66,7 @@ let siteWeather = {};
 const dcImages = {};
 
 // ---------------------------------------------------------------
-// LOCAL CLOUD VIDEOS 
+// LOCAL CLOUD VIDEOS
 // ---------------------------------------------------------------
 const VIDEO_CATEGORIES = {
   clear:     ["assets/video/clear/clear1.mp4", "assets/video/clear/clear2.mp4"],
@@ -75,6 +79,9 @@ let activeVideo = null;
 let currentBucket = null;
 let videoToken = 0;
 
+// Only swaps when the weather bucket changes, so the idle cycle doesn't
+// reload a clip every 9 seconds. The old clip stays on screen until the
+// new one has loaded, which avoids a black flash.
 function setVideoForSite(site) {
   if (!VIDEOS_ENABLED) return;
   const bucket = getWeatherBucket(siteWeather[site.name]);
@@ -86,7 +93,7 @@ function setVideoForSite(site) {
   const token = ++videoToken;
 
   const incoming = createVideo(path, () => {
-    if (token !== videoToken) { incoming.remove(); return; } // a newer request
+    if (token !== videoToken) { incoming.remove(); return; } // a newer request won
     incoming.elt.muted = true;   // muted attribute is needed for autoplay
     incoming.volume(0);
     incoming.loop();
@@ -104,6 +111,19 @@ function drawCoverVideo(v) {
   const s = max(width / vw, height / vh);
   const dw = vw * s, dh = vh * s;
   image(v, (width - dw) / 2, (height - dh) / 2, dw, dh);
+}
+
+// ---------------------------------------------------------------
+// AUDIO: data center hum under the voice
+// ---------------------------------------------------------------
+let hum = null;
+let humReady = false;
+
+function startHum() {
+  if (humReady && !hum.isPlaying()) { hum.setLoop(true); hum.setVolume(0.6); hum.play(); }
+}
+function stopHum() {
+  if (humReady && hum.isPlaying()) hum.stop();
 }
 
 let idleCycleInterval = 9000;
@@ -152,12 +172,17 @@ function setup() {
   textFont("Arial");
   fill(255);
 
-  // data center photos
+  // data center photos (non-blocking; a missing file just won't show)
   for (const dc of dataCenters) {
     loadImage(dc.image,
       img => { dcImages[dc.name] = img; },
       () => console.warn("Missing image:", dc.image));
   }
+
+  // hum (needs p5.sound)
+  hum = loadSound("assets/audio/datacenter_hum.mp3",
+    () => { humReady = true; },
+    () => console.warn("Missing hum audio"));
 
   serial = new p5.SerialPort();
 
@@ -184,6 +209,7 @@ function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
 }
 
+// determines the video (and text) category from live cloud% + weather text
 function getWeatherBucket(w) {
   if (!w) return "cloudy";
   const desc = (w.weather || "").toLowerCase();
@@ -382,7 +408,7 @@ function startCall() {
   if (state !== 0) return;
 
   state = 1;
-  const myRun = ++sequenceRunId;   // a hang-up during the fetch cancels this call
+  const myRun = ++sequenceRunId;   // so a hang-up during the fetch cancels this call
 
   chosenDataCenter = random(dataCenters);
   startHum();
@@ -397,7 +423,7 @@ function startCall() {
 function beginIntro() {
   state = 1;
 
-  const spokenName = chosenDataCenter.name.replace(/\s*\(.*?\)/g, "");
+  const spokenName = chosenDataCenter.name.replace(/\s*\(.*?\)/g, ""); // drop "(Rejected)" etc.
   const w = siteWeather[chosenDataCenter.name];
 
   const lines = [`Dialing ${spokenName} Weather Line...`];
